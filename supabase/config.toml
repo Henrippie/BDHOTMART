@@ -1,0 +1,19 @@
+project_id = "pallgafprdnswzigomyl"
+
+# Recebe o webhook da Hotmart; autentica pelo header x-hotmart-hottok.
+[functions.hotmart-webhook]
+verify_jwt = false
+
+# Serve o HTML do painel (o próprio painel faz login via Supabase Auth).
+[functions.painel]
+verify_jwt = false
+
+# Jobs de ingestão: chamados pelo cron com a service_role key (Bearer).
+[functions.hotmart-backfill]
+verify_jwt = true
+
+[functions.meta-sync]
+verify_jwt = true
+
+[functions.fx-sync]
+verify_jwt = true

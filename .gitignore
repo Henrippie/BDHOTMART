@@ -1,0 +1,12 @@
+# segredos e ambiente
+.env
+.env.*
+*.local
+
+# supabase CLI
+.branches
+.temp
+supabase/.temp
+
+# node / ferramentas
+node_modules/

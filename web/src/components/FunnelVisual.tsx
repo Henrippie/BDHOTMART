@@ -39,6 +39,8 @@ export function FunnelVisual({ itens }: { itens: EtapaFunil[] }) {
       grid
       labelLayout="spread"
       staggerDelay={0.1}
+      heightFloor={0.16}
+      heightCurve={0.5}
       formatValue={(v) => nBR(v)}
       formatPercentage={(p) => (p >= 10 ? `${Math.round(p)}%` : `${p.toFixed(1)}%`)}
     />

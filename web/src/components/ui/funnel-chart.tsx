@@ -114,6 +114,14 @@ export interface FunnelChartProps {
   labelLayout?: "spread" | "grouped";
   labelOrientation?: "vertical" | "horizontal";
   labelAlign?: "center" | "start" | "end";
+  /**
+   * Piso de altura (0–1) só para a SILHUETA — garante que etapas muito
+   * pequenas continuem visíveis (funil de anúncio afunila de forma extrema).
+   * Os valores e as porcentagens exibidos continuam reais.
+   */
+  heightFloor?: number;
+  /** Curva aplicada à silhueta (1 = linear, <1 comprime; ex.: 0.5 = raiz). */
+  heightCurve?: number;
   grid?:
     | boolean
     | {
@@ -682,6 +690,8 @@ export function FunnelChart({
   labelOrientation,
   labelAlign = "center",
   grid: gridProp = false,
+  heightFloor = 0,
+  heightCurve = 1,
 }: FunnelChartProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [sz, setSz] = useState({ w: 0, h: 0 });
@@ -722,7 +732,14 @@ export function FunnelChart({
 
   const max = first.value;
   const n = data.length;
-  const norms = data.map((d) => d.value / max);
+  // norms controla APENAS a silhueta. O piso/curva mantêm o formato de funil
+  // mesmo quando uma etapa é minúscula; as % dos rótulos usam o valor real.
+  const shape = (v: number) => {
+    const raw = max > 0 ? Math.max(v, 0) / max : 0;
+    const curved = heightCurve === 1 ? raw : Math.pow(raw, heightCurve);
+    return heightFloor + (1 - heightFloor) * curved;
+  };
+  const norms = data.map((d) => shape(d.value));
   const horiz = orientation === "horizontal";
   const { w: W, h: H } = sz;
 

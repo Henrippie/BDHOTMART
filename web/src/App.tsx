@@ -5,6 +5,7 @@ import { nBR, rs, pct, roasFmt, taxa, custo, soma, num, brData, hojeISO, menosDi
 import { Card, Tile, Pill, Tabs, Legenda, DataTable, type Col } from "@/components/ui/primitives";
 import { LineChart, type Ponto } from "@/components/LineChart";
 import { FunnelVisual, type EtapaFunil } from "@/components/FunnelVisual";
+import { Configuracoes } from "@/components/Configuracoes";
 
 const CAMPOS_F = ["investido_brl", "impressoes", "alcance_dia", "cliques", "cliques_link",
   "pageviews", "checkouts", "vendas_meta", "receita_meta_brl", "leads", "conversas",
@@ -98,6 +99,7 @@ function Painel({ onSair }: { onSair: () => void }) {
   const [funilSlug, setFunilSlug] = useState<string | null>(null);
   const [quebra, setQuebra] = useState("genero");
   const [abaDiff, setAbaDiff] = useState("campanhas");
+  const [tela, setTela] = useState<"painel" | "config">("painel");
   const [dados, setDados] = useState<Dados | null>(null);
   const [erro, setErro] = useState("");
   const [carregando, setCarregando] = useState(true);
@@ -208,10 +210,18 @@ function Painel({ onSair }: { onSair: () => void }) {
             className="min-h-10 rounded-lg border border-border bg-surface px-2 text-sm">
             <option value="system">Sistema</option><option value="light">Claro</option><option value="dark">Escuro</option>
           </select>
+          <button onClick={() => setTela((t) => (t === "config" ? "painel" : "config"))}
+            className="min-h-10 flex-1 rounded-lg border border-border bg-surface px-3 text-sm sm:flex-none" title="Configurações">
+            {tela === "config" ? "Painel" : "⚙"}
+          </button>
           <button onClick={() => carregar(de, ate)} className="min-h-10 flex-1 rounded-lg border border-border bg-surface px-3 text-sm sm:flex-none">Atualizar</button>
           <button onClick={onSair} className="min-h-10 flex-1 rounded-lg border border-border bg-surface px-3 text-sm sm:flex-none">Sair</button>
         </div>
       </header>
+
+      {tela === "config" ? (
+        <div className="mt-5"><Configuracoes onVoltar={() => { setTela("painel"); carregar(de, ate); }} /></div>
+      ) : (<>
 
       {/* filtros */}
       <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -327,6 +337,7 @@ function Painel({ onSair }: { onSair: () => void }) {
           return ultimo ? `Última sincronização: ${new Date(ultimo.inicio).toLocaleString("pt-BR")} · ${ultimo.job} · ${ultimo.status}` : "Nenhuma sincronização registrada ainda.";
         })()}
       </div>
+      </>)}
     </div>
   );
 }

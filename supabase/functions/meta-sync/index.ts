@@ -9,17 +9,31 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
-const TOKEN = Deno.env.get("META_ACCESS_TOKEN") ?? "";
-const CONTAS = (Deno.env.get("META_AD_ACCOUNT_IDS") ?? Deno.env.get("META_AD_ACCOUNT_ID") ?? "")
-  .split(",").map((c) => c.trim()).filter(Boolean)
-  .map((c) => (c.startsWith("act_") ? c : `act_${c}`));
-const VERSAO = Deno.env.get("META_API_VERSION") ?? "v26.0";
+// Resolvidos por requisição: primeiro a tabela integracao_config (painel),
+// depois os secrets de ambiente como fallback.
+let TOKEN = "";
+let CONTAS: string[] = [];
+let VERSAO = "v26.0";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   { auth: { persistSession: false } },
 );
+
+async function carregarConfig(chaves: string[]): Promise<Record<string, string>> {
+  const map: Record<string, string> = {};
+  try {
+    const { data } = await supabase.from("integracao_config").select("chave,valor").in("chave", chaves);
+    for (const r of data ?? []) if (r.valor) map[r.chave] = String(r.valor);
+  } catch (_) { /* tabela pode não existir ainda */ }
+  return map;
+}
+
+function parseContas(raw: string): string[] {
+  return raw.split(",").map((c) => c.trim()).filter(Boolean)
+    .map((c) => (c.startsWith("act_") ? c : `act_${c}`));
+}
 
 const CAMPOS_BASE = [
   "account_id", "account_currency",
@@ -106,9 +120,14 @@ function metricas(r: any) {
 }
 
 Deno.serve(async (req: Request) => {
+  const cfg = await carregarConfig(["meta_access_token", "meta_ad_account_ids", "meta_api_version"]);
+  TOKEN = cfg.meta_access_token ?? Deno.env.get("META_ACCESS_TOKEN") ?? "";
+  CONTAS = parseContas(cfg.meta_ad_account_ids ?? Deno.env.get("META_AD_ACCOUNT_IDS") ?? Deno.env.get("META_AD_ACCOUNT_ID") ?? "");
+  VERSAO = cfg.meta_api_version ?? Deno.env.get("META_API_VERSION") ?? "v26.0";
+
   if (!TOKEN || CONTAS.length === 0) {
     return new Response(
-      JSON.stringify({ erro: "Configure META_ACCESS_TOKEN e META_AD_ACCOUNT_IDS nos secrets." }),
+      JSON.stringify({ erro: "Configure o token e a conta de anúncios da Meta em Configurações." }),
       { status: 400, headers: { "Content-Type": "application/json" } },
     );
   }

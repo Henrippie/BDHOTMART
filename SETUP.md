@@ -52,7 +52,16 @@ O que **falta você fazer**: gravar os segredos (seção 2), gravar a `service_r
 
 ---
 
-## 2. Gravar os segredos das Edge Functions
+## 2. Gravar as credenciais
+
+**Jeito recomendado — pela aba Configurações do painel:** entre no painel, clique em
+**⚙ Configurações** e preencha Meta (token, conta `act_...`, versão) e Hotmart
+(hottok + client_id/secret/basic). Os valores ficam numa tabela protegida
+(`integracao_config`), que o painel **não lê de volta** (só mostra "configurado/faltando");
+as Edge Functions leem na hora de sincronizar. Os botões "Sincronizar" disparam a
+carga na hora.
+
+### (Alternativa) Gravar como secrets das Edge Functions
 
 Pelo dashboard: **Edge Functions → Manage secrets**, ou pela CLI:
 

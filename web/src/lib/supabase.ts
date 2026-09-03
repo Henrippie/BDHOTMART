@@ -2,7 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 
 // A anon key é pública por design (vai para o navegador). Quem protege os
 // dados é o RLS + o login. Pode sobrescrever por variável de ambiente do Vite.
-const SUPABASE_URL =
+export const SUPABASE_URL =
   import.meta.env.VITE_SUPABASE_URL ?? "https://pallgafprdnswzigomyl.supabase.co";
 const SUPABASE_ANON =
   import.meta.env.VITE_SUPABASE_ANON_KEY ??

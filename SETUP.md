@@ -117,6 +117,36 @@ values (123456, 'campaign_id', '120200000000123', 10, 'Campanha TOF do Método')
 
 ---
 
+## 4.1 Funis por campanha (visão por tipo de campanha)
+
+Além do funil por produto, o painel tem uma seção **"Funis por campanha"**: cada
+funil junta as **campanhas da Meta** (pelo nome) com as **vendas da Hotmart** que
+pertencem a ele. É configurável por três tabelas:
+
+- `funis` — o funil (slug, nome, `tipo` = `leads` ou `venda_direta`, ordem).
+- `funil_regras_meta` — quais campanhas/anúncios entram (por `campaign_regex`, `ad_regex`, `campaign_id`, `adset_id` ou `ad_id`).
+- `funil_regras_venda` — o que conta como venda: `valor` (preço exato), `product_id`, `produto_regex` (nome do produto), `offer_code`, `bump_regex` (order bump por nome) ou `bump_produto_id`.
+
+A configuração inicial (edite em `scripts/funis_config.sql`) já traz dois funis:
+
+1. **Formação Avançada (WhatsApp)** — `tipo = leads`. Meta: campanhas cujo nome traz "avançada" e "wpp". Hotmart: **toda venda de R$ 2.497** conta como venda deste funil (fechada pelo comercial, sem depender de rastreio).
+2. **Terapia Alimentar na Prática** — `tipo = venda_direta`. Meta: campanhas cujo nome contém **"TAP"**. Hotmart: o curso (`produto_regex 'terapia alimentar'`) **mais os order bumps** do checkout (`bump_regex`).
+
+> ⚠️ **Complete a lista de order bumps.** A regra `bump_regex` do funil Terapia
+> Alimentar hoje casa `guia de atividades|masterclass de suplementa|masterclass de
+> planejamento`. Adicione os demais order bumps (separados por `|`) rodando:
+> ```sql
+> update public.funil_regras_venda
+>    set valor = valor || '|nome do novo bump|outro bump'
+>  where tipo = 'bump_regex'
+>    and funil_id = (select id from public.funis where slug = 'terapia-alimentar');
+> ```
+> Confirme também que o nome do produto do curso na Hotmart casa com `terapia alimentar`
+> (se for outro, ajuste o `produto_regex`).
+
+Views expostas: `v_funil_campanha` (funil por dia), `v_funil_bumps` (order bumps por
+funil), `v_funis_ativos` (seletor), `v_anuncio_funil` e `v_venda_funil` (resolvedores).
+
 ## 5. Agendamento (cron) e o Vault
 
 Os jobs já estão criados, mas **só disparam depois** que você gravar a

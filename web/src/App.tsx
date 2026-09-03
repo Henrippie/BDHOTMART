@@ -131,15 +131,16 @@ function Painel({ onSair }: { onSair: () => void }) {
   const escopo = useMemo(() => {
     if (!dados) return null;
     if (produto === "todos") {
+      const diasOrd = [...dados.dias].sort((a, b) => (a.data < b.data ? -1 : 1));
       const f = agregar(dados.ads);
-      f.vendas_hotmart = soma(dados.dias, "vendas_hotmart");
-      f.vendas_rastreadas = soma(dados.dias, "vendas_rastreadas");
-      f.receita_hotmart_brl = soma(dados.dias, "receita_hotmart_brl");
-      f.reembolsos = soma(dados.dias, "reembolsos");
-      const recRastr = soma(dados.dias, "receita_rastreada_brl");
-      const dseries: Ponto[] = dados.dias.map((x) => ({ dia: x.data, a: num(x.vendas_meta), b: num(x.vendas_rastreadas) }));
-      const dmoney: Ponto[] = dados.dias.map((x) => ({ dia: x.data, a: num(x.investido_brl), b: num(x.receita_hotmart_brl) }));
-      return { f, recRastr, dias: dados.dias, ads: dados.ads, quebra: dados.quebra, dseries, dmoney, nDias: dados.dias.length };
+      f.vendas_hotmart = soma(diasOrd, "vendas_hotmart");
+      f.vendas_rastreadas = soma(diasOrd, "vendas_rastreadas");
+      f.receita_hotmart_brl = soma(diasOrd, "receita_hotmart_brl");
+      f.reembolsos = soma(diasOrd, "reembolsos");
+      const recRastr = soma(diasOrd, "receita_rastreada_brl");
+      const dseries: Ponto[] = diasOrd.map((x) => ({ dia: x.data, a: num(x.vendas_meta), b: num(x.vendas_rastreadas) }));
+      const dmoney: Ponto[] = diasOrd.map((x) => ({ dia: x.data, a: num(x.investido_brl), b: num(x.receita_hotmart_brl) }));
+      return { f, recRastr, dias: diasOrd, ads: dados.ads, quebra: dados.quebra, dseries, dmoney, nDias: diasOrd.length };
     }
     const pid = Number(produto);
     const fdias = dados.funil.filter((l) => Number(l.product_id) === pid);
@@ -160,7 +161,8 @@ function Painel({ onSair }: { onSair: () => void }) {
     });
     const dmoney = Object.values(money).sort((x, y) => (x.dia < y.dia ? -1 : 1));
     const diasUnicos = new Set(fdias.map((l) => l.data)).size;
-    return { f, recRastr, dias: fdias, ads: dados.ads.filter((l) => Number(l.product_id) === pid),
+    const diasOrd = [...fdias].sort((a, b) => (a.data < b.data ? -1 : 1));
+    return { f, recRastr, dias: diasOrd, ads: dados.ads.filter((l) => Number(l.product_id) === pid),
       quebra: dados.quebra.filter((l) => Number(l.product_id) === pid), dseries, dmoney, nDias: diasUnicos };
   }, [dados, produto]);
 
@@ -192,22 +194,22 @@ function Painel({ onSair }: { onSair: () => void }) {
   const pctRastr = totV > 0 ? (totR / totV) * 100 : null;
 
   return (
-    <div className="mx-auto max-w-6xl px-3 py-4 sm:px-5">
+    <div className="mx-auto max-w-7xl px-3 py-4 sm:px-6 lg:px-8">
       {/* header */}
-      <header className="flex items-center justify-between gap-3">
+      <header className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-lg font-bold">Meta Ads × Hotmart</h1>
-          <div className="text-sm text-muted-foreground">
+          <h1 className="text-xl font-bold leading-tight">Meta Ads × Hotmart</h1>
+          <div className="text-xs text-muted-foreground sm:text-sm">
             {brData(de)} a {brData(ate)} · {nomeProduto} · faturamento {rs(f.receita_hotmart_brl, 2)}
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 self-stretch sm:self-auto">
           <select value={theme} onChange={(e) => setTheme(e.target.value)} aria-label="Tema"
-            className="rounded-lg border border-border bg-surface px-2 py-2 text-sm">
+            className="min-h-10 rounded-lg border border-border bg-surface px-2 text-sm">
             <option value="system">Sistema</option><option value="light">Claro</option><option value="dark">Escuro</option>
           </select>
-          <button onClick={() => carregar(de, ate)} className="rounded-lg border border-border bg-surface px-3 py-2 text-sm">Atualizar</button>
-          <button onClick={onSair} className="rounded-lg border border-border bg-surface px-3 py-2 text-sm">Sair</button>
+          <button onClick={() => carregar(de, ate)} className="min-h-10 flex-1 rounded-lg border border-border bg-surface px-3 text-sm sm:flex-none">Atualizar</button>
+          <button onClick={onSair} className="min-h-10 flex-1 rounded-lg border border-border bg-surface px-3 text-sm sm:flex-none">Sair</button>
         </div>
       </header>
 
@@ -263,15 +265,17 @@ function Painel({ onSair }: { onSair: () => void }) {
         {/* Funis por campanha */}
         <FunisPorCampanha dados={dados} slug={funilSlug} setSlug={setFunilSlug} />
 
-        {/* Gráficos */}
-        <Card title="Vendas: gerenciador × Hotmart" sub="Compras que a Meta reporta contra vendas aprovadas na Hotmart com rastreio.">
-          <Legenda items={[{ cor: "var(--s1)", nome: "Gerenciador (Meta)" }, { cor: "var(--s2)", nome: "Hotmart (rastreadas)" }]} />
-          <div className="mt-2"><LineChart data={escopo.dseries} nomeA="Gerenciador" nomeB="Hotmart" rot={(v) => nBR(v)} eixo={(v) => nBR(v)} /></div>
-        </Card>
-        <Card title="Investimento × faturamento" sub="Ambos em reais, no mesmo eixo.">
-          <Legenda items={[{ cor: "var(--s1)", nome: "Investido" }, { cor: "var(--s2)", nome: "Faturado" }]} />
-          <div className="mt-2"><LineChart data={escopo.dmoney} nomeA="Investido" nomeB="Faturado" rot={(v) => rs(v, 0)} eixo={(v) => (v >= 1000 ? nBR(v / 1000, 0) + "k" : nBR(v))} /></div>
-        </Card>
+        {/* Gráficos — lado a lado no desktop */}
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Card title="Vendas: gerenciador × Hotmart" sub="Compras que a Meta reporta contra vendas aprovadas na Hotmart com rastreio.">
+            <Legenda items={[{ cor: "var(--s1)", nome: "Gerenciador (Meta)" }, { cor: "var(--s2)", nome: "Hotmart (rastreadas)" }]} />
+            <div className="mt-2"><LineChart data={escopo.dseries} nomeA="Gerenciador" nomeB="Hotmart" rot={(v) => nBR(v)} eixo={(v) => nBR(v)} /></div>
+          </Card>
+          <Card title="Investimento × faturamento" sub="Ambos em reais, no mesmo eixo.">
+            <Legenda items={[{ cor: "var(--s1)", nome: "Investido" }, { cor: "var(--s2)", nome: "Faturado" }]} />
+            <div className="mt-2"><LineChart data={escopo.dmoney} nomeA="Investido" nomeB="Faturado" rot={(v) => rs(v, 0)} eixo={(v) => (v >= 1000 ? nBR(v / 1000, 0) + "k" : nBR(v))} /></div>
+          </Card>
+        </div>
 
         {/* Anúncios */}
         <Card title="Anúncios que mais performaram" sub="Clique num cabeçalho para reordenar.">

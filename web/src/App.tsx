@@ -7,6 +7,7 @@ import { LineChart, type Ponto } from "@/components/LineChart";
 import { FunnelVisual, type EtapaFunil } from "@/components/FunnelVisual";
 import { Configuracoes } from "@/components/Configuracoes";
 import { MelhoresCriativos } from "@/components/MelhoresCriativos";
+import { metricasDoFunil } from "@/lib/funis";
 
 const CAMPOS_F = ["investido_brl", "impressoes", "alcance_dia", "cliques", "cliques_link",
   "pageviews", "checkouts", "vendas_meta", "receita_meta_brl", "leads", "conversas",
@@ -353,6 +354,24 @@ const CAMPOS_FC = ["investido_brl", "impressoes", "alcance_dia", "cliques", "cli
   "checkouts", "vendas_meta", "receita_meta_brl", "leads", "conversas", "vendas_hotmart",
   "vendas_principais", "vendas_bump", "vendas_rastreadas", "receita_hotmart_brl", "liquido_brl", "reembolsos"];
 
+type Extra = { cpm: number | null; ctr: number | null; roas: number | null; nDias: number };
+type TileDado = { rot: string; val: string; nota?: string; tone?: "up" | "down" | "" };
+
+const METRIC_CATALOG: Record<string, (f: Agg, e: Extra) => TileDado> = {
+  investido: (f, e) => ({ rot: "Investido", val: rs(f.investido_brl, 2), nota: `${nBR(e.nDias)} dia(s)` }),
+  cpm: (_f, e) => ({ rot: "CPM", val: e.cpm == null ? "—" : rs(e.cpm, 2), nota: "por mil impressões" }),
+  ctr: (f, e) => ({ rot: "CTR de link", val: pct(e.ctr), nota: `${nBR(f.cliques_link)} cliques` }),
+  leads: (f) => ({ rot: "Leads", val: nBR(f.leads), nota: f.leads > 0 ? "CPL " + rs(f.investido_brl / f.leads, 2) : "—" }),
+  conversas: (f) => ({ rot: "Conversas", val: nBR(f.conversas), nota: f.conversas > 0 ? rs(f.investido_brl / f.conversas, 2) + " cada" : "—" }),
+  vendas_hotmart: (f) => ({ rot: "Vendas", val: nBR(f.vendas_hotmart), nota: "fechadas pelo comercial" }),
+  vendas_principais: (f) => ({ rot: "Vendas do curso", val: nBR(f.vendas_principais), nota: "venda direta" }),
+  vendas_bump: (f) => ({ rot: "Order bumps", val: nBR(f.vendas_bump), nota: "no checkout" }),
+  faturado: (f) => ({ rot: "Faturado", val: rs(f.receita_hotmart_brl, 2), nota: f.reembolsos > 0 ? `${nBR(f.reembolsos)} reembolso(s)` : undefined }),
+  cac: (f) => ({ rot: "CAC por venda", val: f.vendas_hotmart > 0 ? rs(f.investido_brl / f.vendas_hotmart, 2) : "—" }),
+  roas: (_f, e) => ({ rot: "ROAS real", val: roasFmt(e.roas), tone: e.roas != null && e.roas >= 1 ? "up" : "" }),
+  checkouts: (f) => ({ rot: "Checkouts", val: nBR(f.checkouts), nota: f.checkouts > 0 ? rs(f.investido_brl / f.checkouts, 2) + " cada" : "—" }),
+};
+
 function FunisPorCampanha({ dados, slug, setSlug }: { dados: Dados; slug: string | null; setSlug: (s: string) => void; }) {
   const lista = dados.funis;
   if (!lista.length) return null;
@@ -383,27 +402,19 @@ function FunisPorCampanha({ dados, slug, setSlug }: { dados: Dados; slug: string
     bumpsMap[l.bump].vendas += num(l.vendas); bumpsMap[l.bump].receita_brl += num(l.receita_brl);
   });
   const bumps = Object.values(bumpsMap).sort((a, b) => b.vendas - a.vendas);
+  const metricas = metricasDoFunil(sel);
+  const extra: Extra = { cpm, ctr, roas, nDias };
 
   return (
-    <Card title="Funis por campanha" sub="Cada funil junta as campanhas da Meta (pelo nome) com as vendas da Hotmart que pertencem a ele. Independe do filtro de produto.">
+    <Card title="Funis por campanha" sub="Cada funil junta as campanhas da Meta (por atribuição manual ou nome) com as vendas da Hotmart que pertencem a ele. Independe do filtro de produto.">
       <Tabs value={sel.slug} onChange={setSlug} options={lista.map((x) => ({ id: x.slug, label: x.nome }))} />
       <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Tile rot="Investido" val={rs(f.investido_brl, 2)} nota={`${nBR(nDias)} dia(s)`} />
-        <Tile rot="CPM" val={cpm == null ? "—" : rs(cpm, 2)} nota="por mil impressões" />
-        <Tile rot="CTR de link" val={pct(ctr)} nota={`${nBR(f.cliques_link)} cliques`} />
-        {isLeads ? <>
-          <Tile rot="Leads" val={nBR(f.leads)} nota={f.leads > 0 ? "CPL " + rs(f.investido_brl / f.leads, 2) : "—"} />
-          <Tile rot="Conversas" val={nBR(f.conversas)} nota={f.conversas > 0 ? rs(f.investido_brl / f.conversas, 2) + " cada" : "—"} />
-          <Tile rot="Vendas" val={nBR(f.vendas_hotmart)} nota="fechadas pelo comercial" />
-          <Tile rot="Faturado" val={rs(f.receita_hotmart_brl, 2)} />
-          <Tile rot="CAC por venda" val={f.vendas_hotmart > 0 ? rs(f.investido_brl / f.vendas_hotmart, 2) : "—"} tone={roas != null && roas >= 1 ? "up" : ""} nota={roas == null ? "" : "ROAS " + nBR(roas, 2) + "x"} />
-        </> : <>
-          <Tile rot="Checkouts" val={nBR(f.checkouts)} nota={f.checkouts > 0 ? rs(f.investido_brl / f.checkouts, 2) + " cada" : "—"} />
-          <Tile rot="Vendas do curso" val={nBR(f.vendas_principais)} nota="venda direta" />
-          <Tile rot="Order bumps" val={nBR(f.vendas_bump)} nota="no checkout" />
-          <Tile rot="Faturado" val={rs(f.receita_hotmart_brl, 2)} nota={`${nBR(f.reembolsos)} reembolso(s)`} />
-          <Tile rot="ROAS real" val={roasFmt(roas)} tone={roas != null && roas >= 1 ? "up" : ""} nota={"CAC " + (f.vendas_principais > 0 ? rs(f.investido_brl / f.vendas_principais, 2) : "—")} />
-        </>}
+        {metricas.map((k) => {
+          const calc = METRIC_CATALOG[k];
+          if (!calc) return null;
+          const t = calc(f, extra);
+          return <Tile key={k} rot={t.rot} val={t.val} nota={t.nota} tone={t.tone} />;
+        })}
       </div>
 
       <div className="mt-4"><FunnelVisual itens={etapas} /></div>

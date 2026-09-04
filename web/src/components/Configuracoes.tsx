@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase, SUPABASE_URL } from "@/lib/supabase";
-import { Card } from "@/components/ui/primitives";
+import { Card, Tabs } from "@/components/ui/primitives";
 import { cn } from "@/lib/utils";
+import { FunisConfig } from "@/components/FunisConfig";
 
 type Status = Record<string, { preenchido: boolean; valor_publico: string | null; atualizado_em: string | null }>;
 
@@ -39,6 +40,7 @@ function Selo({ ok }: { ok: boolean }) {
 }
 
 export function Configuracoes({ onVoltar }: { onVoltar: () => void }) {
+  const [aba, setAba] = useState("integracoes");
   const [status, setStatus] = useState<Status>({});
   const [msg, setMsg] = useState<{ meta?: string; hotmart?: string; fx?: string }>({});
 
@@ -94,6 +96,12 @@ export function Configuracoes({ onVoltar }: { onVoltar: () => void }) {
         <h2 className="text-lg font-bold">Configurações — integrações</h2>
         <button onClick={onVoltar} className="min-h-10 rounded-lg border border-border bg-surface px-3 text-sm">← Voltar ao painel</button>
       </div>
+      <Tabs value={aba} onChange={setAba} options={[
+        { id: "integracoes", label: "Integrações" },
+        { id: "funis", label: "Funis por campanha" },
+      ]} />
+
+      {aba === "funis" ? <FunisConfig /> : <>
       <p className="text-sm text-muted-foreground">
         As credenciais são guardadas de forma protegida no banco (o painel <b>não</b> lê os valores de volta — só mostra se estão configurados).
         As Edge Functions leem essas credenciais na hora de sincronizar.
@@ -174,6 +182,7 @@ export function Configuracoes({ onVoltar }: { onVoltar: () => void }) {
           <li><b>Hotmart Client ID / Secret / Basic:</b> Hotmart → Ferramentas → Credenciais de API (Hotmart Developers).</li>
         </ul>
       </details>
+      </>}
     </div>
   );
 }

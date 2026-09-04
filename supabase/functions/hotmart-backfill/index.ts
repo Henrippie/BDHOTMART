@@ -8,9 +8,11 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
-const CLIENT_ID = Deno.env.get("HOTMART_CLIENT_ID") ?? "";
-const CLIENT_SECRET = Deno.env.get("HOTMART_CLIENT_SECRET") ?? "";
-const BASIC = Deno.env.get("HOTMART_BASIC_TOKEN") ?? "";
+// Resolvidos por requisição: tabela integracao_config (painel) e, como
+// fallback, os secrets de ambiente.
+let CLIENT_ID = "";
+let CLIENT_SECRET = "";
+let BASIC = "";
 
 const OAUTH = "https://api-sec-vlc.hotmart.com/security/oauth/token";
 const API = "https://developers.hotmart.com/payments/api/v1/sales/history";
@@ -20,6 +22,15 @@ const supabase = createClient(
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   { auth: { persistSession: false } },
 );
+
+async function carregarConfig(chaves: string[]): Promise<Record<string, string>> {
+  const map: Record<string, string> = {};
+  try {
+    const { data } = await supabase.from("integracao_config").select("chave,valor").in("chave", chaves);
+    for (const r of data ?? []) if (r.valor) map[r.chave] = String(r.valor);
+  } catch (_) { /* tabela pode não existir ainda */ }
+  return map;
+}
 
 async function token(): Promise<string> {
   const url = `${OAUTH}?${new URLSearchParams({
@@ -106,9 +117,14 @@ function mapear(item: any) {
 }
 
 Deno.serve(async (req: Request) => {
+  const cfg = await carregarConfig(["hotmart_client_id", "hotmart_client_secret", "hotmart_basic_token"]);
+  CLIENT_ID = cfg.hotmart_client_id ?? Deno.env.get("HOTMART_CLIENT_ID") ?? "";
+  CLIENT_SECRET = cfg.hotmart_client_secret ?? Deno.env.get("HOTMART_CLIENT_SECRET") ?? "";
+  BASIC = cfg.hotmart_basic_token ?? Deno.env.get("HOTMART_BASIC_TOKEN") ?? "";
+
   if (!CLIENT_ID || !CLIENT_SECRET || !BASIC) {
     return new Response(
-      JSON.stringify({ erro: "Configure HOTMART_CLIENT_ID, HOTMART_CLIENT_SECRET e HOTMART_BASIC_TOKEN." }),
+      JSON.stringify({ erro: "Configure as credenciais da API da Hotmart em Configurações." }),
       { status: 400, headers: { "Content-Type": "application/json" } },
     );
   }

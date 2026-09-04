@@ -227,6 +227,21 @@ export const HTML = `<!doctype html>
     <div class="rolagem" id="funil"></div>
   </section>
 
+  <section class="card" id="funilCampanhaCard" hidden>
+    <h2>Funis por campanha</h2>
+    <div class="sub">Cada funil junta as campanhas da Meta (pelo nome) com as vendas da Hotmart que pertencem a ele. Independe do filtro de produto acima.</div>
+    <div class="abas" role="tablist" id="abasFunil"></div>
+    <div class="tiles" id="funilCampanhaTiles"></div>
+    <div class="legenda" style="margin-top:6px">
+      <span><i style="background:var(--s1)"></i>Investido</span>
+      <span><i style="background:var(--s2)"></i>Faturado</span>
+    </div>
+    <div id="grafFunilCampanha"></div>
+    <div class="rolagem" id="funilCampanhaEtapas"></div>
+    <div class="rolagem" id="funilCampanhaBumps"></div>
+    <div class="sub" id="funilCampanhaNota" style="margin-top:8px"></div>
+  </section>
+
   <section class="card">
     <h2>Vendas: gerenciador x Hotmart</h2>
     <div class="sub">Compras que a Meta reporta contra vendas aprovadas na Hotmart com rastreio.</div>
@@ -361,7 +376,7 @@ function hojeISO() { return new Date(Date.now() - 3 * 3600e3).toISOString().slic
 function menosDias(n) { var d = new Date(Date.now() - 3 * 3600e3); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10); }
 function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]; }); }
 
-var estado = { de: menosDias(6), ate: hojeISO(), produto: "todos", aba: "campanhas", quebra: "genero", dados: null, ordem: {} };
+var estado = { de: menosDias(6), ate: hojeISO(), produto: "todos", funil: null, aba: "campanhas", quebra: "genero", dados: null, ordem: {} };
 
 /* ---------- gráfico de linhas ---------- */
 function grafico(alvo, linhas, cfg) {
@@ -845,6 +860,133 @@ function montarFiltroProduto() {
   });
 }
 
+/* ---------- funis por campanha ---------- */
+var CAMPOS_FC = ["investido_brl", "impressoes", "alcance_dia", "cliques", "cliques_link",
+  "pageviews", "checkouts", "vendas_meta", "receita_meta_brl", "leads", "conversas",
+  "vendas_hotmart", "vendas_principais", "vendas_bump", "vendas_rastreadas",
+  "receita_hotmart_brl", "liquido_brl", "reembolsos"];
+
+function qtdDias(linhas) { var s = {}; linhas.forEach(function (l) { s[l.data] = 1; }); return Object.keys(s).length; }
+
+function funilCampanha() {
+  var d = estado.dados;
+  var card = document.getElementById("funilCampanhaCard");
+  var lista = d.funis || [];
+  if (!lista.length) { card.hidden = true; return; }
+  card.hidden = false;
+
+  if (!estado.funil || !lista.some(function (x) { return x.slug === estado.funil; })) estado.funil = lista[0].slug;
+  var sel = lista.filter(function (x) { return x.slug === estado.funil; })[0];
+
+  document.getElementById("abasFunil").innerHTML = lista.map(function (x) {
+    return '<button class="aba" role="tab" data-funil="' + x.slug + '" aria-selected="' +
+      (x.slug === estado.funil) + '">' + esc(x.nome) + "</button>";
+  }).join("");
+  document.querySelectorAll("#abasFunil .aba").forEach(function (b) {
+    b.addEventListener("click", function () { estado.funil = b.dataset.funil; funilCampanha(); });
+  });
+
+  var linhas = (d.funilCampanha || []).filter(function (l) { return String(l.funil_id) === String(sel.funil_id); });
+  var f = {}; CAMPOS_FC.forEach(function (k) { f[k] = soma(linhas, k); });
+  var isLeads = sel.tipo === "leads";
+  var cpm = f.impressoes > 0 ? f.investido_brl / f.impressoes * 1000 : null;
+  var ctr = taxa(f.cliques_link, f.impressoes);
+  var roas = custo(f.receita_hotmart_brl, f.investido_brl);
+
+  function tf(rot, val, nota, classe) {
+    return '<div class="tile"><div class="rot">' + rot + '</div><div class="val ' + (classe || "") +
+      '">' + val + '</div><div class="nota">' + (nota || "") + "</div></div>";
+  }
+  var tiles = [
+    tf("Investido", rs(f.investido_brl, 2), nBR(qtdDias(linhas)) + " dia(s)"),
+    tf("CPM", cpm == null ? "—" : rs(cpm, 2), "por mil impressões"),
+    tf("CTR de link", pct(ctr), nBR(f.cliques_link) + " cliques")
+  ];
+  if (isLeads) {
+    tiles.push(tf("Leads", nBR(f.leads), f.leads > 0 ? "CPL " + rs(f.investido_brl / f.leads, 2) : "—"));
+    tiles.push(tf("Conversas", nBR(f.conversas), f.conversas > 0 ? rs(f.investido_brl / f.conversas, 2) + " cada" : "—"));
+    tiles.push(tf("Vendas", nBR(f.vendas_hotmart), "fechadas pelo comercial"));
+    tiles.push(tf("Faturado", rs(f.receita_hotmart_brl, 2), ""));
+    tiles.push(tf("CAC por venda", f.vendas_hotmart > 0 ? rs(f.investido_brl / f.vendas_hotmart, 2) : "—",
+      roas == null ? "" : "ROAS " + nBR(roas, 2) + "x", roas != null && roas >= 1 ? "up" : ""));
+  } else {
+    tiles.push(tf("Checkouts", nBR(f.checkouts), f.checkouts > 0 ? rs(f.investido_brl / f.checkouts, 2) + " cada" : "—"));
+    tiles.push(tf("Vendas do curso", nBR(f.vendas_principais), "venda direta"));
+    tiles.push(tf("Order bumps", nBR(f.vendas_bump), "no checkout"));
+    tiles.push(tf("Faturado", rs(f.receita_hotmart_brl, 2), nBR(f.reembolsos) + " reembolso(s)"));
+    tiles.push(tf("ROAS real", roas == null ? "—" : nBR(roas, 2) + "x",
+      "CAC " + (f.vendas_principais > 0 ? rs(f.investido_brl / f.vendas_principais, 2) : "—"),
+      roas != null && roas >= 1 ? "up" : ""));
+  }
+  document.getElementById("funilCampanhaTiles").innerHTML = tiles.join("");
+
+  var porDia = {};
+  linhas.forEach(function (l) {
+    if (!porDia[l.data]) porDia[l.data] = { dia: l.data, a: 0, b: 0 };
+    porDia[l.data].a += num(l.investido_brl);
+    porDia[l.data].b += num(l.receita_hotmart_brl);
+  });
+  grafico("grafFunilCampanha", Object.keys(porDia).sort().map(function (k) { return porDia[k]; }),
+    { titulo: "Investido x faturado do funil", nomeA: "Investido", nomeB: "Faturado",
+      eixo: function (v) { return v >= 1000 ? nBR(v / 1000, 0) + "k" : nBR(v); },
+      rot: function (v) { return rs(v, 0); } });
+
+  var etapas = [
+    ["Impressões", nBR(f.impressoes), "alcance " + nBR(f.alcance_dia) + " (soma dos dias)",
+      "CPM " + (cpm == null ? "—" : rs(cpm, 2))],
+    ["Cliques no link", nBR(f.cliques_link), "CTR " + pct(ctr),
+      "CPC " + (f.cliques_link > 0 ? rs(f.investido_brl / f.cliques_link, 2) : "—")],
+    ["Visitas na página", nBR(f.pageviews), "connect " + pct(taxa(f.pageviews, f.cliques_link)),
+      f.pageviews > 0 ? rs(f.investido_brl / f.pageviews, 2) + " por visita" : "—"]
+  ];
+  if (isLeads) {
+    etapas.push(["Leads", nBR(f.leads), "por visita " + pct(taxa(f.leads, f.pageviews)),
+      "CPL " + (f.leads > 0 ? rs(f.investido_brl / f.leads, 2) : "—")]);
+    if (f.conversas > 0) etapas.push(["Conversas no WhatsApp", nBR(f.conversas),
+      "por clique " + pct(taxa(f.conversas, f.cliques_link)), rs(f.investido_brl / Math.max(f.conversas, 1), 2) + " cada"]);
+    etapas.push(["Vendas (comercial)", nBR(f.vendas_hotmart), "por lead " + pct(taxa(f.vendas_hotmart, f.leads)),
+      "CAC " + (f.vendas_hotmart > 0 ? rs(f.investido_brl / f.vendas_hotmart, 2) : "—")]);
+  } else {
+    etapas.push(["Checkouts iniciados", nBR(f.checkouts), "conversão " + pct(taxa(f.checkouts, f.pageviews)),
+      f.checkouts > 0 ? rs(f.investido_brl / f.checkouts, 2) + " por checkout" : "—"]);
+    etapas.push(["Compras do curso", nBR(f.vendas_principais), "conversão " + pct(taxa(f.vendas_principais, f.pageviews)),
+      "CAC " + (f.vendas_principais > 0 ? rs(f.investido_brl / f.vendas_principais, 2) : "—")]);
+  }
+  var corpo = etapas.map(function (l) {
+    var fraca = l[1] === "0";
+    return '<tr class="' + (fraca ? "fraca" : "") + '"><td class="etapa">' + l[0] + "</td>" +
+      '<td class="volume">' + l[1] + '</td><td class="med">' + l[2] + '</td><td class="med">' + l[3] + "</td></tr>";
+  }).join("");
+  document.getElementById("funilCampanhaEtapas").innerHTML =
+    '<table class="funil"><thead><tr><th>Etapa</th><th>Volume</th><th>Taxa</th><th>Custo</th></tr></thead><tbody>' +
+    corpo + "</tbody></table>";
+
+  var elB = document.getElementById("funilCampanhaBumps");
+  if (isLeads) {
+    elB.innerHTML = "";
+  } else {
+    var mb = {};
+    (d.funilBumps || []).filter(function (l) { return String(l.funil_id) === String(sel.funil_id); }).forEach(function (l) {
+      if (!mb[l.bump]) mb[l.bump] = { bump: l.bump, vendas: 0, receita_brl: 0 };
+      mb[l.bump].vendas += num(l.vendas); mb[l.bump].receita_brl += num(l.receita_brl);
+    });
+    var bumps = Object.keys(mb).map(function (k) { return mb[k]; }).sort(function (a, b) { return b.vendas - a.vendas; });
+    if (!bumps.length) {
+      elB.innerHTML = '<div class="sub" style="margin-top:6px">Sem order bumps neste período.</div>';
+    } else {
+      elB.innerHTML = '<table class="larga"><thead><tr><th>Order bump (checkout)</th><th>Vendas</th><th>Faturado</th></tr></thead><tbody>' +
+        bumps.map(function (r) { return "<tr><td>" + esc(r.bump) + "</td><td>" + nBR(r.vendas) + "</td><td>" + rs(r.receita_brl, 2) + "</td></tr>"; }).join("") +
+        '<tr><td class="etapa">Total</td><td class="volume">' + nBR(bumps.reduce(function (s, r) { return s + r.vendas; }, 0)) +
+        '</td><td class="volume">' + rs(bumps.reduce(function (s, r) { return s + r.receita_brl; }, 0), 2) + "</td></tr>" +
+        "</tbody></table>";
+    }
+  }
+
+  document.getElementById("funilCampanhaNota").innerHTML = isLeads
+    ? "Este funil gera leads para o comercial; a venda é contabilizada pelo valor, não pelo rastreio do anúncio."
+    : "Venda direta pelo tráfego. As compras do curso mais os order bumps do checkout entram neste funil.";
+}
+
 /* ---------- desenho ---------- */
 function desenhar() {
   var e = escopo();
@@ -865,6 +1007,7 @@ function desenhar() {
   tabelaAds(e);
   tabelaQuebra(e);
   tabelaGeral(e);
+  funilCampanha();
 
   var r = estado.dados.rastreio;
   var totV = soma(r, "vendas"), totR = soma(r, "com_ad_id");
@@ -892,10 +1035,14 @@ async function carregar() {
       consultar("v_qualidade_rastreio?select=*&" + f),
       consultar("v_ultimas_vendas?select=*"),
       consultar("v_produtos_ativos?select=*"),
-      consultar("sync_log?select=job,inicio,status,registros&order=inicio.desc&limit=6")
+      consultar("sync_log?select=job,inicio,status,registros&order=inicio.desc&limit=6"),
+      consultar("v_funil_campanha?select=*&" + f),
+      consultar("v_funil_bumps?select=*&" + f),
+      consultar("v_funis_ativos?select=*")
     ]);
     estado.dados = { dias: r[0], funil: r[1], ads: r[2], quebra: r[3], campanhas: r[4],
-      rastreio: r[5], vendas: r[6], produtos: r[7], logs: r[8] };
+      rastreio: r[5], vendas: r[6], produtos: r[7], logs: r[8],
+      funilCampanha: r[9], funilBumps: r[10], funis: r[11] };
 
     montarFiltroProduto();
     desenhar();

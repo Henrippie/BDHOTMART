@@ -7,13 +7,21 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
-const HOTTOK = Deno.env.get("HOTMART_HOTTOK") ?? "";
-
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   { auth: { persistSession: false } },
 );
+
+// hottok vem da tabela integracao_config (painel) com fallback no secret.
+async function obterHottok(): Promise<string> {
+  try {
+    const { data } = await supabase.from("integracao_config")
+      .select("valor").eq("chave", "hotmart_hottok").maybeSingle();
+    if (data?.valor) return String(data.valor);
+  } catch (_) { /* tabela pode não existir ainda */ }
+  return Deno.env.get("HOTMART_HOTTOK") ?? "";
+}
 
 // evento da Hotmart -> status guardado no banco
 const STATUS_POR_EVENTO: Record<string, string> = {
@@ -94,6 +102,7 @@ Deno.serve(async (req: Request) => {
 
   // Autenticidade: a Hotmart envia o hottok no header (e, em versões
   // antigas, dentro do corpo).
+  const HOTTOK = await obterHottok();
   const hottokRecebido = req.headers.get("x-hotmart-hottok") ??
     req.headers.get("X-HOTMART-HOTTOK") ?? corpo?.hottok ?? "";
 

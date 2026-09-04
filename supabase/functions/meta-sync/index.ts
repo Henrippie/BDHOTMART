@@ -9,17 +9,31 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
-const TOKEN = Deno.env.get("META_ACCESS_TOKEN") ?? "";
-const CONTAS = (Deno.env.get("META_AD_ACCOUNT_IDS") ?? Deno.env.get("META_AD_ACCOUNT_ID") ?? "")
-  .split(",").map((c) => c.trim()).filter(Boolean)
-  .map((c) => (c.startsWith("act_") ? c : `act_${c}`));
-const VERSAO = Deno.env.get("META_API_VERSION") ?? "v26.0";
+// Resolvidos por requisição: primeiro a tabela integracao_config (painel),
+// depois os secrets de ambiente como fallback.
+let TOKEN = "";
+let CONTAS: string[] = [];
+let VERSAO = "v26.0";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   { auth: { persistSession: false } },
 );
+
+async function carregarConfig(chaves: string[]): Promise<Record<string, string>> {
+  const map: Record<string, string> = {};
+  try {
+    const { data } = await supabase.from("integracao_config").select("chave,valor").in("chave", chaves);
+    for (const r of data ?? []) if (r.valor) map[r.chave] = String(r.valor);
+  } catch (_) { /* tabela pode não existir ainda */ }
+  return map;
+}
+
+function parseContas(raw: string): string[] {
+  return raw.split(",").map((c) => c.trim()).filter(Boolean)
+    .map((c) => (c.startsWith("act_") ? c : `act_${c}`));
+}
 
 const CAMPOS_BASE = [
   "account_id", "account_currency",
@@ -106,9 +120,14 @@ function metricas(r: any) {
 }
 
 Deno.serve(async (req: Request) => {
+  const cfg = await carregarConfig(["meta_access_token", "meta_ad_account_ids", "meta_api_version"]);
+  TOKEN = cfg.meta_access_token ?? Deno.env.get("META_ACCESS_TOKEN") ?? "";
+  CONTAS = parseContas(cfg.meta_ad_account_ids ?? Deno.env.get("META_AD_ACCOUNT_IDS") ?? Deno.env.get("META_AD_ACCOUNT_ID") ?? "");
+  VERSAO = cfg.meta_api_version ?? Deno.env.get("META_API_VERSION") ?? "v26.0";
+
   if (!TOKEN || CONTAS.length === 0) {
     return new Response(
-      JSON.stringify({ erro: "Configure META_ACCESS_TOKEN e META_AD_ACCOUNT_IDS nos secrets." }),
+      JSON.stringify({ erro: "Configure o token e a conta de anúncios da Meta em Configurações." }),
       { status: 400, headers: { "Content-Type": "application/json" } },
     );
   }
@@ -130,30 +149,42 @@ Deno.serve(async (req: Request) => {
   try {
     for (const conta of CONTAS) {
       // ---------- 1. base, por anúncio ----------
-      try {
-        for await (const pagina of paginar(montarUrl(conta, range, CAMPOS_BASE))) {
-          const linhas = pagina.map((r: any) => ({
-            date_start: r.date_start,
-            ad_id: Number(r.ad_id),
-            account_id: r.account_id ?? null,
-            campaign_id: r.campaign_id ? Number(r.campaign_id) : null,
-            campaign_name: r.campaign_name ?? null,
-            adset_id: r.adset_id ? Number(r.adset_id) : null,
-            adset_name: r.adset_name ?? null,
-            ad_name: r.ad_name ?? null,
-            ...metricas(r),
-            raw: r,
-            atualizado_em: new Date().toISOString(),
-          })).filter((l: any) => l.ad_id && l.date_start);
+      // reach no nível de anúncio às vezes derruba a chamada ("unknown error");
+      // tenta com reach e, se falhar, repete sem reach.
+      for (const campos of [CAMPOS_BASE, CAMPOS_BASE.filter((c) => c !== "reach")]) {
+        try {
+          for await (const pagina of paginar(montarUrl(conta, range, campos))) {
+            // IDs da Meta chegam como string no JSON e têm até 18 dígitos —
+            // acima do inteiro seguro do JS (2^53). Number(...) arredondava
+            // e corrompia o ID; manter como string deixa o Postgres (bigint)
+            // fazer o parse exato.
+            const linhas = pagina.map((r: any) => ({
+              date_start: r.date_start,
+              ad_id: r.ad_id ?? null,
+              account_id: r.account_id ?? null,
+              campaign_id: r.campaign_id ?? null,
+              campaign_name: r.campaign_name ?? null,
+              adset_id: r.adset_id ?? null,
+              adset_name: r.adset_name ?? null,
+              ad_name: r.ad_name ?? null,
+              ...metricas(r),
+              raw: r,
+              atualizado_em: new Date().toISOString(),
+            })).filter((l: any) => l.ad_id && l.date_start);
 
-          if (linhas.length) {
-            const { error } = await supabase.from("meta_ads_insights")
-              .upsert(linhas, { onConflict: "date_start,ad_id" });
-            if (error) problemas.push(`${conta} base: ${error.message}`);
-            else totalBase += linhas.length;
+            if (linhas.length) {
+              const { error } = await supabase.from("meta_ads_insights")
+                .upsert(linhas, { onConflict: "date_start,ad_id" });
+              if (error) problemas.push(`${conta} base: ${error.message}`);
+              else totalBase += linhas.length;
+            }
           }
+          break; // deu certo, não tenta a variante sem reach
+        } catch (e) {
+          if (campos.includes("reach")) continue; // tenta de novo sem reach
+          problemas.push(`${conta} base: ${e}`);
         }
-      } catch (e) { problemas.push(`${conta} base: ${e}`); }
+      }
 
       if (!comQuebras) continue;
 
@@ -170,11 +201,11 @@ Deno.serve(async (req: Request) => {
             for await (const pagina of paginar(montarUrl(conta, range, campos, p.breakdowns))) {
               const linhas = pagina.map((r: any) => ({
                 date_start: r.date_start,
-                ad_id: Number(r.ad_id),
+                ad_id: r.ad_id ?? null,
                 tipo: p.tipo,
                 chave1: String(r[p.k1] ?? "desconhecido"),
                 chave2: String(r[p.k2] ?? ""),
-                campaign_id: r.campaign_id ? Number(r.campaign_id) : null,
+                campaign_id: r.campaign_id ?? null,
                 ...metricas(r),
                 atualizado_em: new Date().toISOString(),
               })).filter((l: any) => l.ad_id && l.date_start);

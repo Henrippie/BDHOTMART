@@ -43,7 +43,7 @@ with f as (
   returning id
 )
 insert into public.funil_regras_meta (funil_id, tipo, valor, observacao)
-select id, 'campaign_regex', '\mtap', 'nome da campanha começa uma palavra com "TAP"' from f;
+select id, 'campaign_regex', 'ctap|terapia alimentar', 'nome da campanha contém "CTAP" ou "Terapia Alimentar"' from f;
 
 -- curso vendido direto
 insert into public.funil_regras_venda (funil_id, tipo, valor, observacao)

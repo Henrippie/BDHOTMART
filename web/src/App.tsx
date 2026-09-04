@@ -7,7 +7,7 @@ import { LineChart, type Ponto } from "@/components/LineChart";
 import { FunnelVisual, type EtapaFunil } from "@/components/FunnelVisual";
 import { Configuracoes } from "@/components/Configuracoes";
 import { MelhoresCriativos } from "@/components/MelhoresCriativos";
-import { metricasDoFunil } from "@/lib/funis";
+import { metricasDoFunil, etapasDoFunil, ETAPA_LABELS } from "@/lib/funis";
 
 const CAMPOS_F = ["investido_brl", "impressoes", "alcance_dia", "cliques", "cliques_link",
   "pageviews", "checkouts", "vendas_meta", "receita_meta_brl", "leads", "conversas",
@@ -372,6 +372,15 @@ const METRIC_CATALOG: Record<string, (f: Agg, e: Extra) => TileDado> = {
   checkouts: (f) => ({ rot: "Checkouts", val: nBR(f.checkouts), nota: f.checkouts > 0 ? rs(f.investido_brl / f.checkouts, 2) + " cada" : "—" }),
 };
 
+const ETAPA_VALOR: Record<string, (f: Agg, isLeads: boolean) => number> = {
+  cliques_link: (f) => f.cliques_link,
+  pageviews: (f) => f.pageviews,
+  leads: (f) => f.leads,
+  conversas: (f) => f.conversas,
+  checkouts: (f) => f.checkouts,
+  vendas: (f, isLeads) => (isLeads ? f.vendas_hotmart : f.vendas_principais),
+};
+
 function FunisPorCampanha({ dados, slug, setSlug }: { dados: Dados; slug: string | null; setSlug: (s: string) => void; }) {
   const lista = dados.funis;
   if (!lista.length) return null;
@@ -389,12 +398,7 @@ function FunisPorCampanha({ dados, slug, setSlug }: { dados: Dados; slug: string
   linhas.forEach((l) => { const k = l.data; if (!money[k]) money[k] = { dia: k, a: 0, b: 0 }; money[k].a += num(l.investido_brl); money[k].b += num(l.receita_hotmart_brl); });
   const dmoney = Object.values(money).sort((x, y) => (x.dia < y.dia ? -1 : 1));
 
-  const etapas: EtapaFunil[] = isLeads
-    ? [{ label: "Cliques", value: f.cliques_link }, { label: "Visitas", value: f.pageviews },
-       { label: "Leads", value: f.leads }, ...(f.conversas > 0 ? [{ label: "Conversas", value: f.conversas }] : []),
-       { label: "Vendas", value: f.vendas_hotmart }]
-    : [{ label: "Cliques", value: f.cliques_link }, { label: "Visitas", value: f.pageviews },
-       { label: "Checkouts", value: f.checkouts }, { label: "Compras", value: f.vendas_principais }];
+  const etapas: EtapaFunil[] = etapasDoFunil(sel).map((k) => ({ label: ETAPA_LABELS[k], value: ETAPA_VALOR[k](f, isLeads) }));
 
   const bumpsMap: Record<string, { bump: string; vendas: number; receita_brl: number }> = {};
   dados.funilBumps.filter((l) => String(l.funil_id) === String(sel.funil_id)).forEach((l) => {

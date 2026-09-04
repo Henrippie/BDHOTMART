@@ -2,7 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase, tudo, type Row } from "@/lib/supabase";
 import { Card } from "@/components/ui/primitives";
 import { rs, nBR, num, brData } from "@/lib/format";
-import { METRICA_LABELS, METRICA_KEYS, METRICAS_PADRAO_LEADS, METRICAS_PADRAO_VENDA, metricasDoFunil } from "@/lib/funis";
+import {
+  METRICA_LABELS, METRICA_KEYS, METRICAS_PADRAO_LEADS, METRICAS_PADRAO_VENDA, metricasDoFunil,
+  ETAPA_LABELS, ETAPA_KEYS, ETAPAS_PADRAO_LEADS, ETAPAS_PADRAO_VENDA, etapasDoFunil,
+} from "@/lib/funis";
 import { cn } from "@/lib/utils";
 
 function slugify(s: string): string {
@@ -24,19 +27,26 @@ function Botao({ children, onClick, variante = "primario", disabled, small }: {
   );
 }
 
-type Funil = { id: number; slug: string; nome: string; tipo: string; ativo: boolean; ordem: number; metricas: string[] | null };
+type Funil = { id: number; slug: string; nome: string; tipo: string; ativo: boolean; ordem: number; metricas: string[] | null; etapas: string[] | null };
 
 function FormFunil({ inicial, onSalvar, onCancelar }: { inicial?: Funil; onSalvar: (f: Partial<Funil> & { nome: string }) => void; onCancelar: () => void; }) {
   const [nome, setNome] = useState(inicial?.nome ?? "");
   const [tipo, setTipo] = useState(inicial?.tipo ?? "venda_direta");
   const [metricas, setMetricas] = useState<string[]>(inicial ? metricasDoFunil(inicial) : METRICAS_PADRAO_VENDA);
+  const [etapas, setEtapas] = useState<string[]>(inicial ? etapasDoFunil(inicial) : ETAPAS_PADRAO_VENDA);
 
   useEffect(() => {
-    if (!inicial) setMetricas(tipo === "leads" ? METRICAS_PADRAO_LEADS : METRICAS_PADRAO_VENDA);
+    if (!inicial) {
+      setMetricas(tipo === "leads" ? METRICAS_PADRAO_LEADS : METRICAS_PADRAO_VENDA);
+      setEtapas(tipo === "leads" ? ETAPAS_PADRAO_LEADS : ETAPAS_PADRAO_VENDA);
+    }
   }, [tipo, inicial]);
 
   function toggle(k: string) {
     setMetricas((m) => (m.includes(k) ? m.filter((x) => x !== k) : [...m, k]));
+  }
+  function toggleEtapa(k: string) {
+    setEtapas((m) => (m.includes(k) ? m.filter((x) => x !== k) : [...m, k]));
   }
 
   return (
@@ -57,7 +67,20 @@ function FormFunil({ inicial, onSalvar, onCancelar }: { inicial?: Funil; onSalva
         </label>
       </div>
       <div className="mt-3">
-        <span className="text-sm font-medium">Métricas exibidas no funil</span>
+        <span className="text-sm font-medium">Etapas da visualização em funil</span>
+        <div className="mt-1.5 flex flex-wrap gap-1.5">
+          {ETAPA_KEYS.map((k) => (
+            <button key={k} type="button" onClick={() => toggleEtapa(k)}
+              className={cn("rounded-full border px-3 py-1 text-xs font-medium transition",
+                etapas.includes(k) ? "border-transparent bg-foreground text-background" : "border-border bg-surface text-foreground hover:bg-muted")}>
+              {ETAPA_LABELS[k]}
+            </button>
+          ))}
+        </div>
+        <p className="mt-1 text-xs text-muted-foreground">A ordem no funil segue sempre cliques → visitas → leads → conversas → checkouts → vendas.</p>
+      </div>
+      <div className="mt-3">
+        <span className="text-sm font-medium">Métricas exibidas nos cartões</span>
         <div className="mt-1.5 flex flex-wrap gap-1.5">
           {METRICA_KEYS.map((k) => (
             <button key={k} type="button" onClick={() => toggle(k)}
@@ -69,7 +92,7 @@ function FormFunil({ inicial, onSalvar, onCancelar }: { inicial?: Funil; onSalva
         </div>
       </div>
       <div className="mt-3 flex gap-2">
-        <Botao onClick={() => nome.trim() && onSalvar({ id: inicial?.id, nome: nome.trim(), tipo, metricas })} disabled={!nome.trim()}>
+        <Botao onClick={() => nome.trim() && onSalvar({ id: inicial?.id, nome: nome.trim(), tipo, metricas, etapas })} disabled={!nome.trim()}>
           {inicial ? "Salvar alterações" : "Criar funil"}
         </Botao>
         <Botao variante="ghost" onClick={onCancelar}>Cancelar</Botao>
@@ -102,16 +125,16 @@ export function FunisConfig() {
 
   async function salvarFunil(f: Partial<Funil> & { nome: string }) {
     setMsg("");
-    const linha = { nome: f.nome, tipo: f.tipo, metricas: f.metricas, slug: undefined as string | undefined };
+    const linha = { nome: f.nome, tipo: f.tipo, metricas: f.metricas, etapas: f.etapas, slug: undefined as string | undefined };
     if (f.id) {
-      const { error } = await supabase.from("funis").update({ nome: linha.nome, tipo: linha.tipo, metricas: linha.metricas }).eq("id", f.id);
+      const { error } = await supabase.from("funis").update({ nome: linha.nome, tipo: linha.tipo, metricas: linha.metricas, etapas: linha.etapas }).eq("id", f.id);
       if (error) { setMsg("Erro: " + error.message); return; }
     } else {
       const base = slugify(f.nome) || "funil";
       let slug = base, n = 2;
       while (funis.some((x) => x.slug === slug)) { slug = `${base}-${n++}`; }
       const { error } = await supabase.from("funis").insert({
-        nome: linha.nome, tipo: linha.tipo, metricas: linha.metricas, slug,
+        nome: linha.nome, tipo: linha.tipo, metricas: linha.metricas, etapas: linha.etapas, slug,
         ordem: (funis.reduce((m, x) => Math.max(m, x.ordem), 0) || 0) + 1,
       });
       if (error) { setMsg("Erro: " + error.message); return; }
@@ -162,7 +185,7 @@ export function FunisConfig() {
                   <div>
                     <div className="font-semibold">{f.nome}</div>
                     <div className="text-xs text-muted-foreground">
-                      {f.tipo === "leads" ? "Geração de leads" : "Venda direta"} · {metricasDoFunil(f).length} métrica(s)
+                      {f.tipo === "leads" ? "Geração de leads" : "Venda direta"} · {etapasDoFunil(f).length} etapa(s) no funil · {metricasDoFunil(f).length} métrica(s)
                     </div>
                   </div>
                   <div className="flex gap-2">

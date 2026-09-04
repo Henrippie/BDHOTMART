@@ -24,3 +24,25 @@ export function metricasDoFunil(f: { tipo?: string; metricas?: string[] | null }
   if (f.metricas && f.metricas.length) return f.metricas;
   return f.tipo === "leads" ? METRICAS_PADRAO_LEADS : METRICAS_PADRAO_VENDA;
 }
+
+// Etapas da visualização em funil (silhueta). A ordem do catálogo é fixa —
+// de propósito, pra não deixar o usuário montar um funil fora de ordem.
+export const ETAPA_LABELS: Record<string, string> = {
+  cliques_link: "Cliques no link",
+  pageviews: "Visitas",
+  leads: "Leads",
+  conversas: "Conversas",
+  checkouts: "Checkouts",
+  vendas: "Vendas",
+};
+
+export const ETAPA_KEYS = Object.keys(ETAPA_LABELS);
+
+export const ETAPAS_PADRAO_LEADS = ["cliques_link", "pageviews", "leads", "conversas", "vendas"];
+export const ETAPAS_PADRAO_VENDA = ["cliques_link", "pageviews", "checkouts", "vendas"];
+
+export function etapasDoFunil(f: { tipo?: string; etapas?: string[] | null }): string[] {
+  const escolhidas = f.etapas && f.etapas.length ? f.etapas : (f.tipo === "leads" ? ETAPAS_PADRAO_LEADS : ETAPAS_PADRAO_VENDA);
+  // sempre na ordem do catálogo, não na ordem em que foram marcadas
+  return ETAPA_KEYS.filter((k) => escolhidas.includes(k));
+}

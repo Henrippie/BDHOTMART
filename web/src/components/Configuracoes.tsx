@@ -118,6 +118,7 @@ export function Configuracoes({ onVoltar }: { onVoltar: () => void }) {
             ["meta_api_version", metaVersao || "v26.0", true],
           ], "meta")}>Salvar Meta</Botao>
           <Botao variante="ghost" onClick={() => disparar("meta-sync", "dias=7", "meta")}>Sincronizar Meta (7 dias)</Botao>
+          <Botao variante="ghost" onClick={() => disparar("meta-criativos-sync", "limite=12", "meta")}>Sincronizar criativos (melhores anúncios)</Botao>
         </div>
         {msg.meta && <div className="mt-2 text-sm text-muted-foreground">{msg.meta}</div>}
       </Card>

@@ -154,13 +154,17 @@ Deno.serve(async (req: Request) => {
       for (const campos of [CAMPOS_BASE, CAMPOS_BASE.filter((c) => c !== "reach")]) {
         try {
           for await (const pagina of paginar(montarUrl(conta, range, campos))) {
+            // IDs da Meta chegam como string no JSON e têm até 18 dígitos —
+            // acima do inteiro seguro do JS (2^53). Number(...) arredondava
+            // e corrompia o ID; manter como string deixa o Postgres (bigint)
+            // fazer o parse exato.
             const linhas = pagina.map((r: any) => ({
               date_start: r.date_start,
-              ad_id: Number(r.ad_id),
+              ad_id: r.ad_id ?? null,
               account_id: r.account_id ?? null,
-              campaign_id: r.campaign_id ? Number(r.campaign_id) : null,
+              campaign_id: r.campaign_id ?? null,
               campaign_name: r.campaign_name ?? null,
-              adset_id: r.adset_id ? Number(r.adset_id) : null,
+              adset_id: r.adset_id ?? null,
               adset_name: r.adset_name ?? null,
               ad_name: r.ad_name ?? null,
               ...metricas(r),
@@ -197,11 +201,11 @@ Deno.serve(async (req: Request) => {
             for await (const pagina of paginar(montarUrl(conta, range, campos, p.breakdowns))) {
               const linhas = pagina.map((r: any) => ({
                 date_start: r.date_start,
-                ad_id: Number(r.ad_id),
+                ad_id: r.ad_id ?? null,
                 tipo: p.tipo,
                 chave1: String(r[p.k1] ?? "desconhecido"),
                 chave2: String(r[p.k2] ?? ""),
-                campaign_id: r.campaign_id ? Number(r.campaign_id) : null,
+                campaign_id: r.campaign_id ?? null,
                 ...metricas(r),
                 atualizado_em: new Date().toISOString(),
               })).filter((l: any) => l.ad_id && l.date_start);

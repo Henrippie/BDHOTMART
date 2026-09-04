@@ -6,6 +6,7 @@ import { Card, Tile, Pill, Tabs, Legenda, DataTable, type Col } from "@/componen
 import { LineChart, type Ponto } from "@/components/LineChart";
 import { FunnelVisual, type EtapaFunil } from "@/components/FunnelVisual";
 import { Configuracoes } from "@/components/Configuracoes";
+import { MelhoresCriativos } from "@/components/MelhoresCriativos";
 
 const CAMPOS_F = ["investido_brl", "impressoes", "alcance_dia", "cliques", "cliques_link",
   "pageviews", "checkouts", "vendas_meta", "receita_meta_brl", "leads", "conversas",
@@ -21,6 +22,7 @@ function agregar(linhas: Row[]): Agg {
 interface Dados {
   dias: Row[]; funil: Row[]; ads: Row[]; quebra: Row[]; campanhas: Row[]; rastreio: Row[];
   vendas: Row[]; produtos: Row[]; logs: Row[]; funilCampanha: Row[]; funilBumps: Row[]; funis: Row[];
+  criativos: Row[];
 }
 
 // ─── Theme ───────────────────────────────────────────────────────────────────
@@ -107,14 +109,15 @@ function Painel({ onSair }: { onSair: () => void }) {
   const carregar = useCallback(async (d: string, a: string) => {
     setCarregando(true); setErro("");
     try {
-      const [dias, funil, ads, quebraR, campanhas, rastreio, vendas, produtos, logs, funilCampanha, funilBumps, funis] =
+      const [dias, funil, ads, quebraR, campanhas, rastreio, vendas, produtos, logs, funilCampanha, funilBumps, funis, criativos] =
         await Promise.all([
           periodo("v_resumo_dia", d, a), periodo("v_funil_produto", d, a), periodo("v_anuncios", d, a),
           periodo("v_quebra", d, a), periodo("v_cruzamento_campanha", d, a), periodo("v_qualidade_rastreio", d, a),
           tudo("v_ultimas_vendas"), tudo("v_produtos_ativos"), tudo("sync_log", "inicio"),
           periodo("v_funil_campanha", d, a), periodo("v_funil_bumps", d, a), tudo("v_funis_ativos"),
+          tudo("v_podium_criativos"),
         ]);
-      setDados({ dias, funil, ads, quebra: quebraR, campanhas, rastreio, vendas, produtos, logs, funilCampanha, funilBumps, funis });
+      setDados({ dias, funil, ads, quebra: quebraR, campanhas, rastreio, vendas, produtos, logs, funilCampanha, funilBumps, funis, criativos });
     } catch (e) {
       setErro(e instanceof Error ? e.message : String(e));
     } finally { setCarregando(false); }
@@ -329,6 +332,9 @@ function Painel({ onSair }: { onSair: () => void }) {
             </ul>
           </details>
         </Card>
+
+        {/* Melhores criativos */}
+        <MelhoresCriativos criativos={dados.criativos} />
       </div>
 
       <div className="mt-6 pb-6 text-center text-xs text-muted-foreground">

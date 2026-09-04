@@ -149,30 +149,38 @@ Deno.serve(async (req: Request) => {
   try {
     for (const conta of CONTAS) {
       // ---------- 1. base, por anúncio ----------
-      try {
-        for await (const pagina of paginar(montarUrl(conta, range, CAMPOS_BASE))) {
-          const linhas = pagina.map((r: any) => ({
-            date_start: r.date_start,
-            ad_id: Number(r.ad_id),
-            account_id: r.account_id ?? null,
-            campaign_id: r.campaign_id ? Number(r.campaign_id) : null,
-            campaign_name: r.campaign_name ?? null,
-            adset_id: r.adset_id ? Number(r.adset_id) : null,
-            adset_name: r.adset_name ?? null,
-            ad_name: r.ad_name ?? null,
-            ...metricas(r),
-            raw: r,
-            atualizado_em: new Date().toISOString(),
-          })).filter((l: any) => l.ad_id && l.date_start);
+      // reach no nível de anúncio às vezes derruba a chamada ("unknown error");
+      // tenta com reach e, se falhar, repete sem reach.
+      for (const campos of [CAMPOS_BASE, CAMPOS_BASE.filter((c) => c !== "reach")]) {
+        try {
+          for await (const pagina of paginar(montarUrl(conta, range, campos))) {
+            const linhas = pagina.map((r: any) => ({
+              date_start: r.date_start,
+              ad_id: Number(r.ad_id),
+              account_id: r.account_id ?? null,
+              campaign_id: r.campaign_id ? Number(r.campaign_id) : null,
+              campaign_name: r.campaign_name ?? null,
+              adset_id: r.adset_id ? Number(r.adset_id) : null,
+              adset_name: r.adset_name ?? null,
+              ad_name: r.ad_name ?? null,
+              ...metricas(r),
+              raw: r,
+              atualizado_em: new Date().toISOString(),
+            })).filter((l: any) => l.ad_id && l.date_start);
 
-          if (linhas.length) {
-            const { error } = await supabase.from("meta_ads_insights")
-              .upsert(linhas, { onConflict: "date_start,ad_id" });
-            if (error) problemas.push(`${conta} base: ${error.message}`);
-            else totalBase += linhas.length;
+            if (linhas.length) {
+              const { error } = await supabase.from("meta_ads_insights")
+                .upsert(linhas, { onConflict: "date_start,ad_id" });
+              if (error) problemas.push(`${conta} base: ${error.message}`);
+              else totalBase += linhas.length;
+            }
           }
+          break; // deu certo, não tenta a variante sem reach
+        } catch (e) {
+          if (campos.includes("reach")) continue; // tenta de novo sem reach
+          problemas.push(`${conta} base: ${e}`);
         }
-      } catch (e) { problemas.push(`${conta} base: ${e}`); }
+      }
 
       if (!comQuebras) continue;
 
